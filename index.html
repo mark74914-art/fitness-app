@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 引入 PWA 相關設定 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="健身紀錄">
+    <link rel="apple-touch-icon" href="icon.png">
+    
+    <title>健身訓練追蹤系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #121212; --card-bg: #1e1e1e; --text-main: #ffffff;
+            --text-muted: #aaaaaa; --accent-color: #4caf50; --accent-hover: #45a049;
+            --danger-color: #e53935; --border-color: #333333;
+        }
+        body { background-color: var(--bg-color); color: var(--text-main); font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px 20px calc(70px + env(safe-area-inset-bottom)); display: flex; justify-content: center; }
+        
+        .app-container { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 20px; }
+        .card { background-color: var(--card-bg); border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5); }
+        h2 { margin-top: 0; font-size: 1.2rem; color: var(--accent-color); border-bottom: 1px solid var(--border-color); padding-bottom: 10px; text-align: center; }
+        h3 { font-size: 1rem; color: var(--text-muted); text-align: center; margin: 20px 0 10px 0; }
+        .input-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+        .input-row { display: flex; gap: 10px; }
+        label { font-size: 0.9rem; color: var(--text-muted); }
+        input, select { background-color: #2c2c2c; color: var(--text-main); border: 1px solid var(--border-color); padding: 10px; border-radius: 6px; font-size: 1rem; width: 100%; box-sizing: border-box; text-align: center; transition: 0.2s; }
+        input:focus { border-color: var(--accent-color); outline: none; background-color: #333; }
+        
+        button { background-color: var(--accent-color); color: white; border: none; padding: 12px; font-size: 1rem; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        button:hover { background-color: var(--accent-hover); }
+        .btn-small { padding: 6px 10px; font-size: 0.8rem; width: auto; }
+        .btn-danger { background-color: var(--danger-color); }
+        .btn-outline { background-color: transparent; border: 1px solid var(--text-muted); color: var(--text-muted); }
+        .btn-outline:hover { background-color: #333333; }
+        
+        .auth-container { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .auth-user-info { font-size: 0.9rem; color: var(--text-muted); }
+        #app-content { display: none; } 
+
+        .page-section { display: none; animation: fadeIn 0.3s ease; }
+        .page-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background-color: rgba(30, 30, 30, 0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--border-color); display: none; justify-content: space-around; align-items: center; padding-top: 10px; padding-bottom: max(10px, env(safe-area-inset-bottom)); z-index: 1000; box-shadow: 0 -2px 10px rgba(0,0,0,0.5); }
+        .nav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-muted); font-size: 0.75rem; cursor: pointer; flex: 1; transition: 0.2s; user-select: none; }
+        .nav-icon { font-size: 1.4rem; filter: grayscale(100%) opacity(0.6); transition: 0.2s; }
+        .nav-item.active { color: var(--accent-color); font-weight: bold; }
+        .nav-item.active .nav-icon { filter: grayscale(0%) opacity(1); transform: scale(1.1); }
+
+        .calendar-container { background-color: #2a2a2a; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; }
+        .calendar-day-name { font-size: 0.8rem; color: var(--text-muted); padding-bottom: 5px; }
+        .calendar-day { padding: 8px 0; border-radius: 6px; cursor: pointer; font-size: 0.9rem; position: relative; background-color: #333; transition: 0.2s; }
+        .calendar-day:hover { background-color: #444; }
+        .calendar-day.empty { background-color: transparent; cursor: default; }
+        .calendar-day.selected { border: 1px solid var(--accent-color); background-color: #1e3a1f; color: var(--accent-color); font-weight: bold; }
+        .calendar-day.has-record::after { content: ''; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); width: 5px; height: 5px; background-color: var(--accent-color); border-radius: 50%; }
+
+        .volume-display { font-size: 3.5rem; font-weight: bold; text-align: center; margin: 10px 0; color: #ffb74d; font-variant-numeric: tabular-nums; }
+        .volume-unit { text-align: center; color: var(--text-muted); font-size: 1rem; }
+        .record-list { list-style: none; padding: 0; margin: 0; max-height: 350px; overflow-y: auto; }
+        .record-item { display: flex; justify-content: space-between; align-items: center; background-color: #2a2a2a; margin-bottom: 8px; padding: 12px; border-radius: 6px; }
+        .record-info { display: flex; flex-direction: column; gap: 4px; }
+        .record-title { font-weight: bold; display: flex; align-items: center; }
+        .record-category { font-size: 0.75rem; background: #333; padding: 2px 6px; border-radius: 4px; margin-right: 6px; color: #ffb74d; }
+        .record-detail { color: var(--text-muted); font-size: 0.9rem; }
+        
+        .timer-display { font-size: 4.5rem; font-weight: bold; text-align: center; margin: 10px 0; font-variant-numeric: tabular-nums; letter-spacing: 2px; color: #fff; }
+        .timer-controls, .quick-time { display: flex; gap: 10px; margin-bottom: 10px; }
+        .chart-container { position: relative; height: 280px; width: 100%; margin-top: 10px; }
+        #previous-record-hint { font-size: 0.85rem; color: #ffb74d; text-align: center; margin-top: -5px; margin-bottom: 10px; min-height: 1.2em; }
+
+        .zone-container { display: flex; flex-direction: column; gap: 8px; }
+        .zone-btn { background-color: #2a2a2a; color: var(--text-muted); border: 2px solid transparent; text-align: left; padding: 12px 15px; border-radius: 8px; line-height: 1.4; display: flex; justify-content: space-between; align-items: center; }
+        .zone-btn span.z-title { font-size: 1rem; font-weight: bold; }
+        .zone-btn span.z-desc { font-size: 0.8rem; opacity: 0.8; }
+        
+        .zone-btn[data-zone="1"].active { border-color: #9e9e9e; background-color: rgba(158,158,158,0.15); color: #fff; }
+        .zone-btn[data-zone="1"].active span.z-title { color: #9e9e9e; }
+        .zone-btn[data-zone="2"].active { border-color: #4fc3f7; background-color: rgba(79,195,247,0.15); color: #fff; }
+        .zone-btn[data-zone="2"].active span.z-title { color: #4fc3f7; }
+        .zone-btn[data-zone="3"].active { border-color: #4caf50; background-color: rgba(76,175,80,0.15); color: #fff; }
+        .zone-btn[data-zone="3"].active span.z-title { color: #4caf50; }
+        .zone-btn[data-zone="4"].active { border-color: #ffb300; background-color: rgba(255,179,0,0.15); color: #fff; }
+        .zone-btn[data-zone="4"].active span.z-title { color: #ffb300; }
+        .zone-btn[data-zone="5"].active { border-color: #e53935; background-color: rgba(229,57,53,0.15); color: #fff; }
+        .zone-btn[data-zone="5"].active span.z-title { color: #e53935; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="card" style="padding: 10px 20px;">
+        <div class="auth-container" style="margin-bottom: 0;">
+            <div class="auth-user-info" id="user-info">檢查登入狀態中...</div>
+            <button id="auth-btn" class="btn-small" style="width: auto;">Google 登入</button>
+        </div>
+    </div>
+
+    <div id="app-content">
+        <!-- 分頁 1：整合式訓練台 -->
+        <div id="tab-record" class="page-section active">
+            <div class="card">
+                <h2>📝 訓練控制台</h2>
+                <div class="input-group">
+                    <div style="display: flex; gap: 10px;">
+                        <input type="date" id="record-date" style="flex: 1;">
+                        <select id="category-select" onchange="renderExerciseOptions()" style="flex: 1.5;"></select>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <div style="display: flex; gap: 10px;">
+                        <select id="exercise-select" onchange="autoFillPreviousData(this.value, true)" style="flex: 2; font-size: 1.1rem; font-weight: bold;"></select>
+                        <button class="btn-outline btn-small" onclick="addCustomExercise()" style="white-space: nowrap;">+ 新動作</button>
+                    </div>
+                </div>
+                
+                <div id="previous-record-hint">💡 尚未有此動作的紀錄</div>
+                
+                <div class="input-row" id="weight-input-group">
+                    <div class="input-group" style="flex: 1;">
+                        <label>重量(kg)</label>
+                        <input type="number" id="weight-input" min="0" step="0.5" placeholder="0" onfocus="this.value=''">
+                    </div>
+                    <div class="input-group" style="flex: 1;">
+                        <label>次數</label>
+                        <input type="number" id="reps-input" min="1" step="1" placeholder="0" onfocus="this.value=''">
+                    </div>
+                    <div class="input-group" style="flex: 1;">
+                        <label>目前組數</label>
+                        <input type="number" id="sets-input" min="1" step="1" value="1" onfocus="this.value=''">
+                    </div>
+                </div>
+
+                <div id="cardio-input-group" style="display: none;">
+                    <div class="input-group">
+                        <label>運動時間 (分鐘)</label>
+                        <input type="number" id="duration-input" min="1" placeholder="例如: 30" onfocus="this.value=''">
+                    </div>
+                    <div class="input-group">
+                        <label>體感強度</label>
+                        <div class="zone-container">
+                            <button class="zone-btn" data-zone="1" onclick="selectZone(1)"><span class="z-title">Z1 輕鬆活動</span></button>
+                            <button class="zone-btn active" data-zone="2" onclick="selectZone(2)"><span class="z-title">Z2 聊天配速</span></button>
+                            <button class="zone-btn" data-zone="3" onclick="selectZone(3)"><span class="z-title">Z3 有點費力</span></button>
+                            <button class="zone-btn" data-zone="4" onclick="selectZone(4)"><span class="z-title">Z4 氣喘吁吁</span></button>
+                            <button class="zone-btn" data-zone="5" onclick="selectZone(5)"><span class="z-title">Z5 極限狀態</span></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <button onclick="completeSet()" style="flex: 2; padding: 15px; font-size: 1.2rem;">
+                        ✅ 完成這組<br><span style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">(紀錄並開始休息)</span>
+                    </button>
+                    <button onclick="modifySet()" style="flex: 1; padding: 15px; font-size: 1.1rem; background-color: #ff9800;">
+                        ❌ 未完成<br><span style="font-size: 0.85rem; font-weight: normal; opacity: 0.9;">(修改次數)</span>
+                    </button>
+                </div>
+
+                <hr style="border-color: #333; margin: 25px 0;">
+
+                <h3 style="margin-top:0; color: var(--accent-color);">⏱️ 組間休息</h3>
+                <div class="timer-display" id="timer-display">01:30</div>
+                <div class="quick-time">
+                    <button class="btn-outline" onclick="setTimer(60)">1 分</button>
+                    <button class="btn-outline" onclick="setTimer(90)">1.5 分</button>
+                    <button class="btn-outline" onclick="setTimer(120)">2 分</button>
+                    <button class="btn-outline" onclick="setTimer(180)">3 分</button>
+                </div>
+                <div class="timer-controls" style="margin-top: 15px;">
+                    <button id="timer-toggle-btn" class="btn-outline" onclick="toggleTimer()">手動開始</button>
+                    <button class="btn-danger" onclick="resetTimer()" style="flex: 0.5;">歸零</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 分頁 2：數據分析 -->
+        <div id="tab-analysis" class="page-section">
+            <div class="card">
+                <h2>📊 數據分析與成長趨勢</h2>
+                <div class="input-row" style="margin-bottom: 20px;">
+                    <div class="input-group" style="flex: 1;">
+                        <label>分析時間範圍</label>
+                        <select id="chart-timeframe" onchange="updateCharts()">
+                            <option value="30">最近 30 天</option>
+                            <option value="90">最近 3 個月</option>
+                            <option value="all" selected>所有歷史紀錄</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <h3>🕸️ 肌肉部位鍛鍊雷達圖 (重訓)</h3>
+                <div class="chart-container"><canvas id="radarChart"></canvas></div>
+                <hr style="border-color: #333; margin: 25px 0;">
+                
+                <!-- 新增：有氧區間獨立雷達圖 -->
+                <h3>🏃 有氧區間雷達圖 (Z1~Z5 分佈)</h3>
+                <div class="chart-container"><canvas id="cardioRadarChart"></canvas></div>
+                <hr style="border-color: #333; margin: 25px 0;">
+                
+                <div class="input-group">
+                    <label>分析特定動作成長</label>
+                    <select id="chart-exercise-select" onchange="updateCharts()"><option value="">-- 請先新增紀錄 --</option></select>
+                </div>
+                <h3>📈 單一動作成長曲線</h3>
+                <div class="chart-container"><canvas id="trendChart"></canvas></div>
+                <hr style="border-color: #333; margin: 25px 0;">
+                <h3>💪 重訓部位容量佔比</h3>
+                <div class="chart-container"><canvas id="distributionChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- 分頁 3：社群大廳 -->
+        <div id="tab-community" class="page-section">
+            <div class="card">
+                <h2>🌍 世界共同目標</h2>
+                <h3 style="margin-top:0;">全人類累積舉起總量</h3>
+                <div class="volume-display" id="earth-total-display" style="font-size: 3rem;">0</div>
+                <div class="volume-unit">公斤 (kg)</div>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h2>📢 突破自我廣播牆</h2>
+                <ul id="world-feed-list" class="record-list" style="max-height: 220px; background:#181818; padding: 10px; border-radius: 8px;">
+                    <li style="text-align:center; color:#aaa;">等待突破中...</li>
+                </ul>
+            </div>
+            <div class="card" style="margin-top: 20px;">
+                <h2>🏆 世界英雄排行榜</h2>
+                <div class="input-group">
+                    <select id="leaderboard-select" onchange="loadLeaderboard()">
+                        <option value="currentStreak">🔥 勤勉王 (連續打卡天數)</option>
+                        <option value="vol_有氧時間">🏃 有氧狂人 (總運動時間)</option>
+                        <option value="vol_下肢推">🦵 下肢推霸主 (下肢相關等)</option>
+                        <option value="vol_水平推">💪 水平推霸主 (臥推等)</option>
+                        <option value="totalVolume">👑 世界總容量霸主</option>
+                    </select>
+                </div>
+                <ul id="leaderboard-list" class="record-list" style="margin-top: 15px;"></ul>
+            </div>
+        </div>
+
+        <!-- 分頁 4：歷史紀錄 -->
+        <div id="tab-history" class="page-section">
+            <div class="card">
+                <h2>📅 訓練日曆與明細查詢</h2>
+                <div class="calendar-container">
+                    <div class="calendar-header">
+                        <button class="btn-small btn-outline" onclick="changeMonth(-1)">&lt;</button>
+                        <span id="calendar-month-year" style="font-weight:bold;"></span>
+                        <button class="btn-small btn-outline" onclick="changeMonth(1)">&gt;</button>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid"></div>
+                </div>
+                <div class="volume-display" id="total-volume">0</div>
+                <div class="volume-unit">當日總重訓容量 (kg)</div>
+                <ul class="record-list" id="record-list" style="margin-top: 15px;"></ul>
+                <button class="btn-outline" onclick="exportToExcel()" style="margin-top: 20px;">📥 一鍵匯出為 Excel (CSV)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<nav class="bottom-nav" id="main-nav">
+    <div class="nav-item active" onclick="switchTab('tab-record', this)"><span class="nav-icon">📝</span><span>訓練台</span></div>
+    <div class="nav-item" onclick="switchTab('tab-analysis', this)"><span class="nav-icon">📊</span><span>分析</span></div>
+    <div class="nav-item" onclick="switchTab('tab-community', this)"><span class="nav-icon">🏆</span><span>社群</span></div>
+    <div class="nav-item" onclick="switchTab('tab-history', this)"><span class="nav-icon">📅</span><span>歷史</span></div>
+</nav>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, updateDoc, query, where, getDoc, setDoc, orderBy, limit, increment } 
+    from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } 
+    from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBWf01W_os_35QtNPxnBMyGpDlO8Wj9Qrw",
+        authDomain: "myfitnesssync-bd793.firebaseapp.com",
+        projectId: "myfitnesssync-bd793",
+        storageBucket: "myfitnesssync-bd793.firebasestorage.app",
+        messagingSenderId: "897077696077",
+        appId: "1:897077696077:web:d6670416140dfc4709ae04"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    let currentUser = null, unsubscribeSnapshot = null, unsubFeed = null, unsubBoard = null, unsubGlobal = null;
+    let records = [];
+    window.currentZone = 2;
+
+    const categories = ["上肢推", "上肢拉", "水平推", "水平拉", "下肢推", "下肢拉", "核心訓練", "有氧訓練"];
+    const defaultExercises = {
+        "上肢推": ["槓鈴肩推", "阿諾啞鈴推舉", "雙槓撐體", "滑輪三頭肌下壓"],
+        "上肢拉": ["滑輪二頭肌彎舉"],
+        "水平推": ["槓鈴臥推"], 
+        "水平拉": [],
+        "下肢推": [], 
+        "下肢拉": ["硬舉"],
+        "核心訓練": [],
+        "有氧訓練": ["跑步", "單車", "健走", "游泳", "划船機", "登階機"]
+    };
+    let exercisesData = JSON.parse(JSON.stringify(defaultExercises));
+
+    window.currentQueryDate = new Date().toISOString().split('T')[0];
+    window.currentCalDate = new Date();
+    document.getElementById('record-date').value = window.currentQueryDate;
+
+    // 新增 cardioRadarChartInstance
+    let trendChartInstance = null, distChartInstance = null, radarChartInstance = null, cardioRadarChartInstance = null; 
+    Chart.defaults.color = '#aaaaaa'; Chart.defaults.borderColor = '#333333';
+
+    window.switchTab = function(tabId, element) {
+        document.querySelectorAll('.page-section').forEach(section => section.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+        element.classList.add('active');
+        if(tabId === 'tab-analysis') {
+            if(trendChartInstance) trendChartInstance.resize();
+            if(distChartInstance) distChartInstance.resize();
+            if(radarChartInstance) radarChartInstance.resize();
+            if(cardioRadarChartInstance) cardioRadarChartInstance.resize();
+        }
+    }
+
+    const authBtn = document.getElementById('auth-btn'), userInfo = document.getElementById('user-info'), appContent = document.getElementById('app-content'), mainNav = document.getElementById('main-nav');
+    authBtn.onclick = () => { if (currentUser) signOut(auth); else signInWithPopup(auth, provider).catch(e => alert("登入錯誤：" + e.message)); };
+
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            currentUser = user; userInfo.textContent = `歡迎, ${user.displayName}`; authBtn.textContent = '登出'; authBtn.className = 'btn-outline btn-small';
+            appContent.style.display = 'block'; mainNav.style.display = 'flex';
+            
+            const settingsSnap = await getDoc(doc(db, "fitness_settings", user.uid));
+            let updatedSettings = false;
+            if(settingsSnap.exists() && settingsSnap.data().exercises) {
+                exercisesData = settingsSnap.data().exercises;
+                if(!exercisesData["有氧訓練"]) { exercisesData["有氧訓練"] = defaultExercises["有氧訓練"]; updatedSettings = true; }
+                
+                if(exercisesData["水平推"]) {
+                    if(exercisesData["水平推"].includes("臥推")) { exercisesData["水平推"] = exercisesData["水平推"].filter(e => e !== "臥推"); updatedSettings = true; }
+                    if(exercisesData["水平推"].includes("槓鈴握推")) { exercisesData["水平推"] = exercisesData["水平推"].filter(e => e !== "槓鈴握推"); updatedSettings = true; }
+                    if(!exercisesData["水平推"].includes("槓鈴臥推")) { exercisesData["水平推"].push("槓鈴臥推"); updatedSettings = true; }
+                }
+                if(exercisesData["下肢推"] && exercisesData["下肢推"].includes("深蹲")) {
+                    exercisesData["下肢推"] = exercisesData["下肢推"].filter(e => e !== "深蹲"); updatedSettings = true;
+                }
+                if(updatedSettings) { setDoc(doc(db, "fitness_settings", user.uid), { exercises: exercisesData }, { merge: true }); }
+            } else { 
+                exercisesData = JSON.parse(JSON.stringify(defaultExercises)); 
+            }
+            
+            window.renderCategoryOptions(); startDatabaseListener(); startCommunityListeners(); 
+        } else {
+            currentUser = null; userInfo.textContent = '請先登入以存取資料'; authBtn.textContent = 'Google 登入'; authBtn.className = 'btn-danger btn-small';
+            appContent.style.display = 'none'; mainNav.style.display = 'none';
+            if (unsubscribeSnapshot) unsubscribeSnapshot(); if (unsubFeed) unsubFeed(); if (unsubBoard) unsubBoard(); if (unsubGlobal) unsubGlobal(); records = [];
+        }
+    });
+
+    window.selectZone = function(zone) {
+        window.currentZone = zone; document.querySelectorAll('.zone-btn').forEach(btn => btn.classList.remove('active')); document.querySelector(`.zone-btn[data-zone="${zone}"]`).classList.add('active');
+    }
+
+    function startCommunityListeners() {
+        unsubGlobal = onSnapshot(doc(db, "global_stats", "earth"), (docSnap) => { if(docSnap.exists()) document.getElementById('earth-total-display').textContent = docSnap.data().totalVolume.toLocaleString(); });
+        unsubFeed = onSnapshot(query(collection(db, "world_feed"), orderBy("timestamp", "desc"), limit(20)), (snapshot) => {
+            const feedList = document.getElementById('world-feed-list'); feedList.innerHTML = '';
+            if (snapshot.empty) return feedList.innerHTML = '<li style="text-align:center; color:#aaa;">等待第一位英雄突破極限...</li>';
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data(), li = document.createElement('li'); li.style.padding = '10px'; li.style.borderBottom = '1px solid #333'; li.style.fontSize = '0.9rem';
+                let recordText = data.isCardio ? `<span style="color:var(--accent-color); font-weight:bold; font-size:1.1rem;">${data.duration} 分鐘</span>！` : `<span style="color:var(--accent-color); font-weight:bold; font-size:1.1rem;">${data.weight}kg</span>！`;
+                li.innerHTML = `<span style="color:#ffb74d; font-weight:bold;">🎉 ${data.userName}</span> 突破了 ${data.exercise} 紀錄：${recordText}`; feedList.appendChild(li);
+            });
+        });
+        window.loadLeaderboard();
+    }
+
+    window.loadLeaderboard = function() {
+        const category = document.getElementById('leaderboard-select').value;
+        if (unsubBoard) unsubBoard();
+        unsubBoard = onSnapshot(query(collection(db, "public_stats"), orderBy(category, "desc"), limit(20)), (snapshot) => {
+            const boardList = document.getElementById('leaderboard-list'); boardList.innerHTML = ''; let rank = 1;
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data(), li = document.createElement('li'); li.className = 'record-item';
+                let displayVal = data[category] || 0;
+                if(category === 'currentStreak') displayVal += ' 天'; else if(category === 'vol_有氧時間') displayVal = displayVal.toLocaleString() + ' 分鐘'; else displayVal = displayVal.toLocaleString() + ' kg';
+                let crown = rank === 1 ? '🥇' : (rank === 2 ? '🥈' : (rank === 3 ? '🥉' : `#${rank}`));
+                li.innerHTML = `<div style="display:flex; align-items:center; gap:10px;"><span style="font-size:1.2rem; width:30px; text-align:center; color:#aaa;">${crown}</span><span style="font-weight:bold; font-size:1rem;">${data.userName}</span></div><div style="color:var(--accent-color); font-weight:bold; font-size:1.1rem;">${displayVal}</div>`;
+                boardList.appendChild(li); rank++;
+            });
+        });
+    }
+
+    function startDatabaseListener() {
+        if (unsubscribeSnapshot) unsubscribeSnapshot(); 
+        unsubscribeSnapshot = onSnapshot(query(collection(db, "fitness_records"), where("userId", "==", currentUser.uid)), (snapshot) => {
+            records = []; 
+            snapshot.forEach((docSnap) => {
+                let data = docSnap.data();
+                if (data.exercise === '槓鈴握推' || data.exercise === '臥推') {
+                    updateDoc(doc(db, "fitness_records", docSnap.id), { exercise: '槓鈴臥推' });
+                    data.exercise = '槓鈴臥推';
+                }
+                records.push({ id: docSnap.id, ...data });
+            });
+            records.sort((a, b) => a.createdAt - b.createdAt);
+            
+            window.renderCalendar(); window.renderHistory(); window.updateChartExerciseSelect(); window.updateCharts();
+            const currentEx = document.getElementById('exercise-select').value; 
+            if(currentEx) window.autoFillPreviousData(currentEx, false);
+        });
+    }
+
+    window.autoFillPreviousData = function(exerciseName, fillInputs = false) {
+        if (!exerciseName) return;
+        const hintEl = document.getElementById('previous-record-hint');
+        const pastRecords = records.filter(r => r.exercise === exerciseName);
+        const isCardio = (document.getElementById('category-select').value === '有氧訓練');
+        
+        if (pastRecords.length > 0) {
+            const lastDate = pastRecords[pastRecords.length - 1].date;
+            const lastDateRecords = pastRecords.filter(r => r.date === lastDate);
+
+            if (isCardio) {
+                const totalDur = lastDateRecords.reduce((sum, r) => sum + (r.duration || 0), 0);
+                const lastRec = lastDateRecords[lastDateRecords.length - 1];
+                if (fillInputs) {
+                    document.getElementById('duration-input').value = lastRec.duration || ''; 
+                    if(lastRec.zone) window.selectZone(lastRec.zone);
+                }
+                hintEl.innerHTML = `上次紀錄 (${lastDate}): <span style="color:var(--accent-color);font-weight:bold;">單次 ${lastRec.duration} 分鐘</span> (當日共累積 ${totalDur} 分, 強度 Z${lastRec.zone})`;
+            } else {
+                const lastRec = lastDateRecords[lastDateRecords.length - 1];
+                const totalSets = lastDateRecords.reduce((sum, r) => sum + (r.sets || 1), 0);
+                if (fillInputs) {
+                    document.getElementById('weight-input').value = lastRec.weight; 
+                    document.getElementById('reps-input').value = lastRec.reps; 
+                    document.getElementById('sets-input').value = '1';
+                }
+                hintEl.innerHTML = `上次紀錄 (${lastDate}): <span style="color:var(--accent-color);font-weight:bold;">${lastRec.weight}kg × ${lastRec.reps}次</span> (當日共推了 ${totalSets} 組)`;
+            }
+        } else {
+            if (fillInputs) {
+                if (isCardio) { document.getElementById('duration-input').value = ''; window.selectZone(2); } 
+                else { document.getElementById('weight-input').value = ''; document.getElementById('reps-input').value = ''; document.getElementById('sets-input').value = '1'; }
+            }
+            hintEl.textContent = '💡 這是您的第一次訓練！';
+        }
+    }
+
+    window.completeSet = function() { executeSaveRecord(false); }
+    window.modifySet = function() {
+        const isCardio = (document.getElementById('category-select').value === '有氧訓練');
+        if (isCardio) {
+            const currentDur = document.getElementById('duration-input').value || 0;
+            const newDur = prompt("實際運動時間是幾分鐘？", currentDur);
+            if (newDur !== null && newDur !== "") executeSaveRecord(true, null, newDur);
+        } else {
+            const currentReps = document.getElementById('reps-input').value || 0;
+            const newReps = prompt("實際完成次數是幾下？", currentReps);
+            if (newReps !== null && newReps !== "") executeSaveRecord(true, newReps, null);
+        }
+    }
+
+    async function executeSaveRecord(isModified, modifiedReps = null, modifiedDur = null) {
+        if (!currentUser) return alert("請先登入！");
+        const date = document.getElementById('record-date').value, category = document.getElementById('category-select').value, exercise = document.getElementById('exercise-select').value;
+        if (!exercise) return alert("請先新增動作！");
+        const isCardio = (category === '有氧訓練');
+        let weight = 0, reps = 0, sets = 0, duration = 0, zone = 0, volume = 0;
+
+        if (isCardio) {
+            duration = isModified ? parseInt(modifiedDur) : parseInt(document.getElementById('duration-input').value);
+            if (isNaN(duration) || duration <= 0) return alert("請輸入有效的運動時間！");
+            zone = window.currentZone; document.getElementById('duration-input').value = duration; 
+        } else {
+            weight = parseFloat(document.getElementById('weight-input').value) || 0;
+            reps = isModified ? parseInt(modifiedReps) : parseInt(document.getElementById('reps-input').value);
+            sets = parseInt(document.getElementById('sets-input').value) || 1;
+            if (isNaN(reps) || reps <= 0 || sets <= 0) return alert("請輸入有效的次數！");
+            document.getElementById('reps-input').value = reps; volume = weight * reps * 1; 
+        }
+
+        const pastRecords = records.filter(r => r.exercise === exercise);
+        if (isCardio) {
+            const maxPastDuration = pastRecords.length > 0 ? Math.max(...pastRecords.map(r => r.duration || 0)) : 0;
+            if (duration > maxPastDuration && maxPastDuration > 0) { 
+                await addDoc(collection(db, "world_feed"), { userId: currentUser.uid, userName: currentUser.displayName || '無名英雄', exercise: exercise, duration: duration, isCardio: true, timestamp: Date.now() });
+            }
+        } else {
+            const maxPastWeight = pastRecords.length > 0 ? Math.max(...pastRecords.map(r => r.weight || 0)) : 0;
+            if (weight > maxPastWeight && maxPastWeight > 0) { 
+                await addDoc(collection(db, "world_feed"), { userId: currentUser.uid, userName: currentUser.displayName || '無名英雄', exercise: exercise, weight: weight, isCardio: false, timestamp: Date.now() });
+            }
+        }
+
+        await addDoc(collection(db, "fitness_records"), {
+            userId: currentUser.uid, date: date, category: category, exercise: exercise, weight: weight, reps: reps, sets: 1, 
+            duration: duration, zone: zone, isCardio: isCardio, restConfigured: timerDuration, createdAt: Date.now()
+        });
+
+        const userStatsRef = doc(db, "public_stats", currentUser.uid);
+        const userStatsSnap = await getDoc(userStatsRef);
+        const todayStr = new Date().toISOString().split('T')[0];
+        let newStreak = 1, maxStreak = 1;
+        
+        if (userStatsSnap.exists()) {
+            const data = userStatsSnap.data(); const lastDate = data.lastWorkoutDate; maxStreak = data.maxStreak || 1;
+            if (lastDate !== todayStr) {
+                const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+                if (lastDate === yesterday.toISOString().split('T')[0]) newStreak = (data.currentStreak || 0) + 1; else newStreak = 1; 
+                if (newStreak > maxStreak) maxStreak = newStreak;
+            } else { newStreak = data.currentStreak || 1; }
+        }
+        
+        const updateData = { userName: currentUser.displayName || '無名英雄', lastWorkoutDate: todayStr, currentStreak: newStreak, maxStreak: maxStreak };
+        if (isCardio) { updateData["vol_有氧時間"] = increment(duration); } 
+        else { updateData["vol_" + category] = increment(volume); updateData["totalVolume"] = increment(volume); await setDoc(doc(db, "global_stats", "earth"), { totalVolume: increment(volume) }, { merge: true }); }
+        await setDoc(userStatsRef, updateData, { merge: true });
+
+        if (!isCardio) document.getElementById('sets-input').value = sets + 1;
+        
+        resetTimer(); toggleTimer(true); 
+    }
+
+    let timerDuration = 90, timeLeft = 90, timerInterval = null, isTimerRunning = false, timerEndTime = 0; 
+    const timerDisplay = document.getElementById('timer-display'), toggleBtn = document.getElementById('timer-toggle-btn');
+    function formatTime(sec) { return `${Math.floor(sec/60).toString().padStart(2,'0')}:${(sec%60).toString().padStart(2,'0')}`; }
+    function updateTimer() { timerDisplay.textContent = formatTime(timeLeft); }
+    window.setTimer = function(sec) { timerDuration = sec; timeLeft = sec; updateTimer(); if(isTimerRunning) { clearInterval(timerInterval); isTimerRunning = false; toggleBtn.textContent = '手動開始'; toggleBtn.className = 'btn-outline'; } }
+    
+    window.toggleTimer = function(forceStart = false) {
+        if (isTimerRunning && !forceStart) { 
+            clearInterval(timerInterval); isTimerRunning = false; toggleBtn.textContent = '繼續計時'; toggleBtn.className = 'btn-outline';
+        } else { 
+            if(forceStart) { clearInterval(timerInterval); isTimerRunning = false; timeLeft = timerDuration; updateTimer(); }
+            isTimerRunning = true; toggleBtn.textContent = '⏸ 暫停休息'; toggleBtn.className = ''; toggleBtn.style.backgroundColor = '#ff9800'; toggleBtn.style.color = '#fff';
+            timerEndTime = Date.now() + (timeLeft * 1000);
+            timerInterval = setInterval(() => { 
+                let now = Date.now(); timeLeft = Math.round((timerEndTime - now) / 1000);
+                if (timeLeft > 0) { updateTimer(); } 
+                else { clearInterval(timerInterval); isTimerRunning = false; toggleBtn.textContent = '手動開始'; toggleBtn.className = 'btn-outline'; toggleBtn.style.backgroundColor = 'transparent'; alert('⏰ 休息結束！該進行下一組了！'); timeLeft = timerDuration; updateTimer(); } 
+            }, 1000); 
+        }
+    }
+    window.resetTimer = function() { clearInterval(timerInterval); isTimerRunning = false; timeLeft = timerDuration; toggleBtn.textContent = '手動開始'; toggleBtn.className = 'btn-outline'; toggleBtn.style.backgroundColor = 'transparent'; updateTimer(); }
+    document.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === 'visible' && isTimerRunning) {
+            let now = Date.now(); timeLeft = Math.round((timerEndTime - now) / 1000);
+            if (timeLeft > 0) { updateTimer(); } else { clearInterval(timerInterval); isTimerRunning = false; toggleBtn.textContent = '手動開始'; toggleBtn.className = 'btn-outline'; toggleBtn.style.backgroundColor = 'transparent'; alert('⏰ 休息結束！該進行下一組了！'); timeLeft = timerDuration; updateTimer(); }
+        }
+    });
+
+    window.deleteRecord = async function(idsStr) { 
+        let ids = [];
+        try { ids = JSON.parse(idsStr); } catch(e) { ids = [idsStr]; }
+        const msg = ids.length > 1 ? `確定要刪除這 ${ids.length} 組疊加的紀錄嗎？` : "確定要刪除這筆紀錄嗎？";
+        if(confirm(msg)) { for(let id of ids) { await deleteDoc(doc(db, "fitness_records", id)); } }
+    }
+
+    window.renderCategoryOptions = function() {
+        const catSelect = document.getElementById('category-select'); catSelect.innerHTML = '';
+        categories.forEach(cat => { const option = document.createElement('option'); option.value = cat; option.textContent = cat; catSelect.appendChild(option); });
+        catSelect.onchange = () => {
+            const isCardio = (catSelect.value === '有氧訓練');
+            document.getElementById('weight-input-group').style.display = isCardio ? 'none' : 'flex';
+            document.getElementById('cardio-input-group').style.display = isCardio ? 'block' : 'none';
+            window.renderExerciseOptions();
+        };
+        catSelect.onchange(); 
+    }
+    window.renderExerciseOptions = function() {
+        const catSelect = document.getElementById('category-select').value, exSelect = document.getElementById('exercise-select'); exSelect.innerHTML = '';
+        if(exercisesData[catSelect]) { exercisesData[catSelect].forEach(ex => { const option = document.createElement('option'); option.value = ex; option.textContent = ex; exSelect.appendChild(option); }); }
+        if(exSelect.value) { autoFillPreviousData(exSelect.value, true); }
+    }
+    window.addCustomExercise = async function() {
+        const currentCat = document.getElementById('category-select').value, newEx = prompt(`新增到【${currentCat}】的動作名稱：`);
+        if (newEx && newEx.trim() !== "" && !exercisesData[currentCat].includes(newEx)) {
+            exercisesData[currentCat].push(newEx.trim()); window.renderExerciseOptions(); document.getElementById('exercise-select').value = newEx.trim();
+            if (currentUser) await setDoc(doc(db, "fitness_settings", currentUser.uid), { exercises: exercisesData }, { merge: true });
+            autoFillPreviousData(newEx.trim(), true);
+        }
+    }
+
+    window.renderHistory = function() {
+        const listEl = document.getElementById('record-list'); listEl.innerHTML = ''; let totalVolume = 0;
+        const dayRecords = records.filter(r => r.date === window.currentQueryDate);
+        
+        let groupedRecords = [];
+        dayRecords.forEach(r => {
+            const cat = r.category || '未分類';
+            const isCardio = r.isCardio || cat === '有氧訓練';
+            if (isCardio) {
+                groupedRecords.push({...r, ids: [r.id]});
+            } else {
+                let existing = groupedRecords.find(g => g.exercise === r.exercise && g.weight === r.weight && g.reps === r.reps && !g.isCardio);
+                if (existing) { existing.sets += (r.sets || 1); existing.ids.push(r.id); } 
+                else { groupedRecords.push({...r, ids: [r.id], sets: r.sets || 1}); }
+            }
+        });
+
+        groupedRecords.forEach(r => {
+            const li = document.createElement('li'); li.className = 'record-item'; const cat = r.category || '未分類'; let detailString = "";
+            if (r.isCardio || cat === '有氧訓練') { 
+                const zoneLabels = ["", "散步(Z1)", "燃脂(Z2)", "有氧(Z3)", "乳酸閾(Z4)", "無氧極限(Z5)"]; 
+                detailString = `⏱️ ${r.duration} 分鐘 | 強度: ${zoneLabels[r.zone] || '未知'}`; 
+            } else { 
+                const volume = r.weight * r.reps * r.sets; totalVolume += volume; 
+                detailString = `${r.weight} kg × ${r.reps} 次 × <span style="color:var(--accent-color); font-weight:bold;">${r.sets} 組</span> = ${volume} kg`; 
+            }
+            const idsStr = JSON.stringify(r.ids).replace(/"/g, '&quot;');
+            li.innerHTML = `<div class="record-info"><span class="record-title"><span class="record-category">${cat}</span>${r.exercise}</span><span class="record-detail">${detailString}</span></div><div class="record-actions"><button class="btn-small btn-danger" onclick="deleteRecord('${idsStr}')">刪除</button></div>`;
+            listEl.appendChild(li);
+        });
+        
+        if(dayRecords.length === 0) listEl.innerHTML = '<li style="text-align:center; color:#aaa; padding:10px;">這天沒有訓練紀錄</li>';
+        document.getElementById('total-volume').textContent = totalVolume.toLocaleString();
+    }
+
+    window.updateChartExerciseSelect = function() {
+        const uniqueExercises = [...new Set(records.map(r => r.exercise))], select = document.getElementById('chart-exercise-select'), currentValue = select.value;
+        select.innerHTML = uniqueExercises.length === 0 ? '<option value="">-- 無歷史紀錄 --</option>' : '';
+        uniqueExercises.forEach(ex => { const option = document.createElement('option'); option.value = ex; option.textContent = ex; select.appendChild(option); });
+        if (uniqueExercises.includes(currentValue)) select.value = currentValue;
+    }
+    
+    window.updateCharts = function() {
+        const timeframe = document.getElementById('chart-timeframe').value, selectedEx = document.getElementById('chart-exercise-select').value;
+        let filteredRecords = records; if (timeframe !== 'all') { const cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate() - parseInt(timeframe)); filteredRecords = records.filter(r => new Date(r.date) >= cutoffDate); }
+        const dateMap = {}; let isSelectedCardio = false;
+        filteredRecords.filter(r => r.exercise === selectedEx).forEach(r => {
+            if(!dateMap[r.date]) dateMap[r.date] = { maxVal: 0, totalVal: 0 };
+            if (r.isCardio || r.category === '有氧訓練') { isSelectedCardio = true; dateMap[r.date].maxVal = Math.max(dateMap[r.date].maxVal, r.duration || 0); dateMap[r.date].totalVal += (r.duration || 0); } 
+            else { dateMap[r.date].maxVal = Math.max(dateMap[r.date].maxVal, r.weight || 0); dateMap[r.date].totalVal += (r.weight * r.reps * (r.sets || 1)); }
+        });
+        const dates = Object.keys(dateMap).sort();
+        if (trendChartInstance) trendChartInstance.destroy();
+        trendChartInstance = new Chart(document.getElementById('trendChart').getContext('2d'), { type: 'line', data: { labels: dates, datasets: [{ label: isSelectedCardio ? '最長時間(分)' : '最大重量(kg)', data: dates.map(d => dateMap[d].maxVal), borderColor: '#4caf50', backgroundColor: '#4caf50', yAxisID: 'y', tension: 0.3 }, { label: isSelectedCardio ? '累積時間(分)' : '動作總容量(kg)', data: dates.map(d => dateMap[d].totalVal), borderColor: '#ffb74d', backgroundColor: '#ffb74d', borderDash: [5, 5], yAxisID: 'y1', tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, scales: { y: { type: 'linear', display: true, position: 'left' }, y1: { type: 'linear', display: true, position: 'right', grid: { drawOnChartArea: false } } } } });
+        
+        // 獨立計算重訓與有氧數據
+        const categoryMap = {}; 
+        const muscleCategories = categories.filter(c => c !== '有氧訓練'); 
+        muscleCategories.forEach(c => categoryMap[c] = 0);
+        
+        const zoneMap = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+        filteredRecords.forEach(r => { 
+            const cat = r.category || '未分類'; 
+            if (cat === '有氧訓練' || r.isCardio) {
+                if (r.zone >= 1 && r.zone <= 5) { zoneMap[r.zone] += (r.duration || 0); }
+            } else {
+                if (categoryMap[cat] !== undefined) { categoryMap[cat] += (r.weight * r.reps * (r.sets || 1)); } 
+            } 
+        });
+
+        // 圓餅圖：僅保留重訓佔比
+        if (distChartInstance) distChartInstance.destroy(); 
+        distChartInstance = new Chart(document.getElementById('distributionChart').getContext('2d'), { type: 'doughnut', data: { labels: Object.keys(categoryMap).filter(k => categoryMap[k] > 0), datasets: [{ data: Object.values(categoryMap).filter(v => v > 0), backgroundColor: ['#4caf50', '#2196f3', '#ff9800', '#e91e63', '#9c27b0', '#00bcd4', '#607d8b'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#ffffff', font: { size: 12 } } } } } });
+        
+        // 雷達圖 1：僅顯示重訓肌肉部位
+        if (radarChartInstance) radarChartInstance.destroy(); 
+        radarChartInstance = new Chart(document.getElementById('radarChart').getContext('2d'), { 
+            type: 'radar', 
+            data: { 
+                labels: muscleCategories, 
+                datasets: [{ label: '部位容量 (kg)', data: muscleCategories.map(cat => categoryMap[cat]), backgroundColor: 'rgba(76, 175, 80, 0.4)', borderColor: '#4caf50', pointBackgroundColor: '#ffb74d', borderWidth: 2, pointRadius: 4 }] 
+            }, 
+            options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: 'rgba(255, 255, 255, 0.2)' }, grid: { color: 'rgba(255, 255, 255, 0.2)' }, pointLabels: { color: '#ffffff', font: { size: 11 } }, ticks: { display: false } } }, plugins: { legend: { display: false } } } 
+        });
+
+        // 雷達圖 2：新增有氧 Z1~Z5 專屬雷達圖 (使用藍色系)
+        if (cardioRadarChartInstance) cardioRadarChartInstance.destroy(); 
+        const zoneLabels = ['Z1 輕鬆', 'Z2 燃脂', 'Z3 有氧', 'Z4 乳酸閾', 'Z5 極限'];
+        const zoneData = [zoneMap[1], zoneMap[2], zoneMap[3], zoneMap[4], zoneMap[5]];
+        cardioRadarChartInstance = new Chart(document.getElementById('cardioRadarChart').getContext('2d'), { 
+            type: 'radar', 
+            data: { 
+                labels: zoneLabels, 
+                datasets: [{ label: '運動時間 (分鐘)', data: zoneData, backgroundColor: 'rgba(33, 150, 243, 0.4)', borderColor: '#2196f3', pointBackgroundColor: '#ffb74d', borderWidth: 2, pointRadius: 4 }] 
+            }, 
+            options: { responsive: true, maintainAspectRatio: false, scales: { r: { angleLines: { color: 'rgba(255, 255, 255, 0.2)' }, grid: { color: 'rgba(255, 255, 255, 0.2)' }, pointLabels: { color: '#ffffff', font: { size: 11 } }, ticks: { display: false } } }, plugins: { legend: { display: false } } } 
+        });
+    }
+
+    window.changeMonth = function(offset) { window.currentCalDate.setMonth(window.currentCalDate.getMonth() + offset); window.renderCalendar(); }
+    window.renderCalendar = function() {
+        const grid = document.getElementById('calendar-grid'); grid.innerHTML = '';
+        const year = window.currentCalDate.getFullYear(), month = window.currentCalDate.getMonth(); document.getElementById('calendar-month-year').textContent = `${year}年 ${month + 1}月`;
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        ['日', '一', '二', '三', '四', '五', '六'].forEach(day => { const el = document.createElement('div'); el.className = 'calendar-day-name'; el.textContent = day; grid.appendChild(el); });
+        const recordsInMonth = new Set(records.map(r => r.date).filter(d => d.startsWith(`${year}-${String(month + 1).padStart(2, '0')}`)));
+        for (let i = 0; i < new Date(year, month, 1).getDay(); i++) { const el = document.createElement('div'); el.className = 'calendar-day empty'; grid.appendChild(el); }
+        for (let i = 1; i <= daysInMonth; i++) {
+            const el = document.createElement('div'); el.className = 'calendar-day'; el.textContent = i;
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+            if (dateStr === window.currentQueryDate) el.classList.add('selected'); if (recordsInMonth.has(dateStr)) el.classList.add('has-record');
+            el.onclick = () => { window.currentQueryDate = dateStr; document.getElementById('record-date').value = dateStr; window.renderCalendar(); window.renderHistory(); }; grid.appendChild(el);
+        }
+    }
+    window.exportToExcel = function() {
+        if (records.length === 0) return alert("目前沒有紀錄可以匯出！");
+        let csvContent = "\uFEFF日期,分類,動作,重量/強度,次數/時間,組數,總容量/總時間,設定休息秒數\n";
+        [...records].sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(r => {
+            if(r.isCardio || r.category === '有氧訓練') csvContent += `"${r.date}","有氧訓練","${r.exercise}",Z${r.zone},${r.duration},1,${r.duration}分鐘,${r.restConfigured||0}\n`;
+            else { const sets = r.sets || 1; csvContent += `"${r.date}","${r.category || '未分類'}","${r.exercise}",${r.weight},${r.reps},${sets},${r.weight * r.reps * sets}kg,${r.restConfigured||0}\n`; }
+        });
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' }), link = document.createElement("a"); link.setAttribute("href", URL.createObjectURL(blob)); link.setAttribute("download", `訓練紀錄_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    };
+
+    window.renderCategoryOptions(); updateTimer();
+    if ('serviceWorker' in navigator) { window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(()=>console.log('未啟用離線支援')); }); }
+</script>
+</body>
+</html>
